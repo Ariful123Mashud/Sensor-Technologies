@@ -1,0 +1,103 @@
+<div style="display: flex; align-items: center; gap: 12px; margin: 0 0 0.75rem;">
+  <label style="font-size: 14px; color: var(--text-secondary); white-space: nowrap;">Sampling rate f<sub>s</sub></label>
+  <input type="range" min="2" max="30" step="1" value="6" id="fs" style="flex: 1;" />
+  <span style="font-size: 14px; font-weight: 500; min-width: 56px; text-align: right;" id="fs-out">6 Hz</span>
+</div>
+
+<div id="status" style="font-size: 14px; padding: 10px 12px; border-radius: var(--radius); margin-bottom: 1rem;"></div>
+
+<div style="position: relative; width: 100%; height: 260px;">
+  <canvas id="chart" role="img" aria-label="Chart showing a 5 Hz sine wave, its samples at the chosen sampling rate, and the aliased apparent wave when undersampled"></canvas>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 16px; height: 2px; background: #2a78d6;"></span>true signal (5 Hz)</span>
+  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #e34948;"></span>samples</span>
+  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 16px; height: 2px; background: #eda100; background-image: linear-gradient(90deg, #eda100 60%, transparent 40%); background-size: 8px 2px;"></span>apparent (aliased) wave</span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const f0 = 5;
+const T = 1.0;
+let chart;
+
+function aliasFreq(fs) {
+  if (fs >= 2*f0) return null;
+  let folded = f0 % fs;
+  let alias = folded > fs/2 ? fs - folded : folded;
+  return alias;
+}
+
+function buildData(fs) {
+  const cont = [];
+  for (let i = 0; i <= 400; i++) {
+    const t = T * i / 400;
+    cont.push({x: t, y: Math.sin(2*Math.PI*f0*t)});
+  }
+  const nSamp = Math.floor(T*fs) + 1;
+  const samp = [];
+  for (let n = 0; n <= nSamp; n++) {
+    const t = n/fs;
+    if (t > T) break;
+    samp.push({x: t, y: Math.sin(2*Math.PI*f0*t)});
+  }
+  const alias = aliasFreq(fs);
+  let aliasLine = [];
+  if (alias !== null) {
+    for (let i = 0; i <= 400; i++) {
+      const t = T * i / 400;
+      aliasLine.push({x: t, y: Math.sin(2*Math.PI*alias*t)});
+    }
+  }
+  return {cont, samp, aliasLine, alias};
+}
+
+function render() {
+  const fs = parseInt(document.getElementById('fs').value);
+  document.getElementById('fs-out').textContent = fs + ' Hz';
+  const {cont, samp, aliasLine, alias} = buildData(fs);
+  const nyquist = 2*f0;
+  const statusEl = document.getElementById('status');
+  if (fs >= nyquist) {
+    statusEl.style.background = 'var(--bg-success)';
+    statusEl.style.color = 'var(--text-success)';
+    statusEl.innerHTML = 'f<sub>s</sub> = ' + fs + ' Hz \u2265 Nyquist rate (' + nyquist + ' Hz) \u2014 samples fully capture the 5 Hz signal, no aliasing.';
+  } else {
+    statusEl.style.background = 'var(--bg-danger)';
+    statusEl.style.color = 'var(--text-danger)';
+    statusEl.innerHTML = 'f<sub>s</sub> = ' + fs + ' Hz &lt; Nyquist rate (' + nyquist + ' Hz) \u2014 aliasing: the samples look like a ' + alias.toFixed(1) + ' Hz wave, not the real 5 Hz signal.';
+  }
+
+  const datasets = [
+    { label: 'true signal', data: cont, borderColor: '#2a78d6', borderWidth: 2, pointRadius: 0, tension: 0 },
+    { label: 'samples', data: samp, borderColor: '#e34948', backgroundColor: '#e34948', showLine: false, pointRadius: 6 }
+  ];
+  if (alias !== null) {
+    datasets.push({ label: 'aliased wave', data: aliasLine, borderColor: '#eda100', borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0 });
+  }
+
+  if (chart) {
+    chart.data.datasets = datasets;
+    chart.update();
+  } else {
+    chart = new Chart(document.getElementById('chart'), {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'time (s)', color: '#898781' }, grid: { color: '#e1e0d9' }, ticks: { color: '#898781' } },
+          y: { min: -1.3, max: 1.3, grid: { color: '#e1e0d9' }, ticks: { color: '#898781' } }
+        }
+      }
+    });
+  }
+}
+
+document.getElementById('fs').addEventListener('input', render);
+render();
+</script>
